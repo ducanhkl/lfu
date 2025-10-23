@@ -5,10 +5,10 @@ public class Node<K, V> {
     V value;
     FreqNode<K, V> freqNode;
 
-    public Node(K key, V value) {
+    public Node(K key, V value, FreqNode<K, V> freqNode) {
         this.key = key;
         this.value = value;
-        this.freqNode = null;
+        this.freqNode = freqNode;
     }
 
     public K getKey() {

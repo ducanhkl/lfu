@@ -28,28 +28,30 @@ public class LRUCache<K, V> {
 
     public V get(final K key) {
         Objects.requireNonNull(key, "Key cannot be null");
-        return Optional.of(map.get(key))
+        return Optional.ofNullable(map.get(key))
                 .stream().peek(this::increaseNodeTime)
                 .map(Node::getValue)
-                .findFirst().orElse(null);
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     public void put(K key, V value) {
+        evictLRU(1);
         Objects.requireNonNull(key, "Key cannot be null");
         
         Node<K, V> node = map.get(key);
-        
+
         if (node != null) {
             node.value = value;
             increaseNodeTime(node);
             return;
         }
 
-        Node<K, V> newNode = new Node<>(key, value);
+        Node<K, V> newNode = new Node<>(key, value, headFreqNode);
         map.put(key, newNode);
         headFreqNode.addNode(newNode);
 
-        evictLRU();
     }
 
     public V remove(K key) {
@@ -110,15 +112,15 @@ public class LRUCache<K, V> {
         freqNode.reduce();
     }
 
-    private void evictLRU() {
+    private void evictLRU(final int buffer) {
         assert headFreqNode.getTime() == 1;
-        while (map.size() > capacity && !headFreqNode.isEmpty()) {
+        while (map.size() > capacity - buffer && !headFreqNode.isEmpty()) {
             K shouldRemove = headFreqNode.getFirstKey();
             remove(shouldRemove);
         }
         FreqNode<K, V> nextFreqNode = headFreqNode.getNext();
         assert nextFreqNode == null || nextFreqNode.getTime() > 1;
-        while (map.size() > capacity && nextFreqNode != null && !nextFreqNode.isEmpty()) {
+        while (map.size() > capacity - buffer && nextFreqNode != null && !nextFreqNode.isEmpty()) {
             K shouldRemove = nextFreqNode.getFirstKey();
             remove(shouldRemove);
         }

@@ -1,6 +1,7 @@
 package org.ducanh;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
@@ -16,7 +17,7 @@ public class FreqNode <K, V> {
 
     public FreqNode(int time, FreqNode<K, V> prev) {
         this.time = time;
-        this.nodes = new HashSet<>();
+        this.nodes = new LinkedHashSet<>();
         this.next = null;
         this.prev = prev;
     }
