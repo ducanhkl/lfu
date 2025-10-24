@@ -28,7 +28,7 @@ public class Main {
     }
     
     private static void basicOperationsDemo() {
-        LRUCache<Integer, String> cache = new LRUCache<>(3);
+        LFUCache<Integer, String> cache = new LFUCache<>(3);
         
         System.out.println("Creating cache with capacity: " + cache.capacity());
         
@@ -50,7 +50,7 @@ public class Main {
     }
     
     private static void evictionDemo() {
-        LRUCache<Integer, String> cache = new LRUCache<>(3);
+        LFUCache<Integer, String> cache = new LFUCache<>(3);
         
         cache.put(1, "One");
         cache.put(2, "Two");
@@ -76,7 +76,7 @@ public class Main {
     }
     
     private static void updateDemo() {
-        LRUCache<Integer, String> cache = new LRUCache<>(3);
+        LFUCache<Integer, String> cache = new LFUCache<>(3);
         
         cache.put(1, "One");
         cache.put(2, "Two");
@@ -95,7 +95,7 @@ public class Main {
     }
     
     private static void stringCacheDemo() {
-        LRUCache<String, Integer> cache = new LRUCache<>(4);
+        LFUCache<String, Integer> cache = new LFUCache<>(4);
         
         System.out.println("Creating a cache for word counts:");
         cache.put("hello", 5);

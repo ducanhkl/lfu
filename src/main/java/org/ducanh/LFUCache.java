@@ -3,12 +3,12 @@ package org.ducanh;
 import java.util.*;
 import java.util.function.Function;
 
-public class LRUCache<K, V> {
+public class LFUCache<K, V> {
     private final int capacity;
     private final Map<K, Node<K, V>> map;
     private final FreqNode<K, V> headFreqNode;
 
-    public LRUCache(Function<Integer, Map<K, Node<K, V>>> mapFactory) {
+    public LFUCache(Function<Integer, Map<K, Node<K, V>>> mapFactory) {
         if (mapFactory == null) {
             throw new IllegalArgumentException("Map factory cannot be null");
         }
@@ -17,7 +17,7 @@ public class LRUCache<K, V> {
         this.headFreqNode = new FreqNode<>(1, null);
     }
 
-    public LRUCache(int capacity) {
+    public LFUCache(int capacity) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("Capacity must be greater than 0");
         }
@@ -37,21 +37,20 @@ public class LRUCache<K, V> {
     }
 
     public void put(K key, V value) {
-        evictLRU(1);
         Objects.requireNonNull(key, "Key cannot be null");
         
         Node<K, V> node = map.get(key);
 
         if (node != null) {
-            node.value = value;
+            node.setValue(value);
             increaseNodeTime(node);
             return;
         }
 
+        evictLRU(1);
         Node<K, V> newNode = new Node<>(key, value, headFreqNode);
         map.put(key, newNode);
         headFreqNode.addNode(newNode);
-
     }
 
     public V remove(K key) {
@@ -64,7 +63,7 @@ public class LRUCache<K, V> {
 
         removeNodeFromFreqTree(node);
         map.remove(key);
-        return node.value;
+        return node.getValue();
     }
 
     public boolean containsKey(K key) {
@@ -89,9 +88,10 @@ public class LRUCache<K, V> {
     }
 
     private void increaseNodeTime(Node<K, V> node) {
-        FreqNode<K, V> preFreqNode = node.freqNode;
+        FreqNode<K, V> currentFreqNode = node.getFreqNode();
+        FreqNode<K, V> nextFreqNode = getNextFreqNode(currentFreqNode);
         removeNodeFromFreqTree(node);
-        FreqNode<K, V> nextFreqNode = getNextFreqNode(preFreqNode);
+        node.setFreqNode(nextFreqNode);
         nextFreqNode.addNode(node);
     }
 
@@ -107,7 +107,7 @@ public class LRUCache<K, V> {
     }
 
     private void removeNodeFromFreqTree(final Node<K, V> node) {
-        final FreqNode<K, V> freqNode = node.freqNode;
+        final FreqNode<K, V> freqNode = node.getFreqNode();
         freqNode.getNodes().remove(node);
         freqNode.reduce();
     }

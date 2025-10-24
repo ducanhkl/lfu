@@ -1,6 +1,5 @@
 package org.ducanh;
 
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -26,8 +25,10 @@ public class FreqNode <K, V> {
         if (!nodes.isEmpty() || time == 1) {
             return;
         }
-        next.next = prev;
-        prev.prev = next;
+        if (next != null)
+            next.prev = prev;
+        if (prev != null)
+            prev.next = next;
     }
 
     public void clear() {

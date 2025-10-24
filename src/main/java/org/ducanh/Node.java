@@ -1,9 +1,9 @@
 package org.ducanh;
 
 public class Node<K, V> {
-    K key;
-    V value;
-    FreqNode<K, V> freqNode;
+    private final K key;
+    private V value;
+    private FreqNode<K, V> freqNode;
 
     public Node(K key, V value, FreqNode<K, V> freqNode) {
         this.key = key;
@@ -23,11 +23,11 @@ public class Node<K, V> {
         this.value = value;
     }
 
-    public FreqNode getFreqNode() {
+    public FreqNode<K, V> getFreqNode() {
         return freqNode;
     }
 
-    public void setFreqNode(FreqNode freqNode) {
+    public void setFreqNode(FreqNode<K, V> freqNode) {
         this.freqNode = freqNode;
     }
 }
