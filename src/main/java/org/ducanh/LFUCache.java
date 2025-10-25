@@ -28,42 +28,65 @@ public class LFUCache<K, V> {
 
     public V get(final K key) {
         Objects.requireNonNull(key, "Key cannot be null");
-        return Optional.ofNullable(map.get(key))
-                .stream().peek(this::increaseNodeTime)
-                .map(Node::getValue)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
+        Node<K, V> node = map.get(key);
+        if (node == null) {
+            return null;
+        }
+        try {
+            node.lock();
+            FreqNode.increaseFreqNode(node);
+            return node.getValue();
+        } finally {
+            node.unlock();
+        }
     }
 
     public void put(K key, V value) {
         Objects.requireNonNull(key, "Key cannot be null");
-        
+
         Node<K, V> node = map.get(key);
 
         if (node != null) {
-            node.setValue(value);
-            increaseNodeTime(node);
+            node.lock();
+            try {
+                node.setValue(value);
+                FreqNode.increaseFreqNode(node);
+            } finally {
+                node.unlock();
+            }
             return;
         }
 
-        evictLRU(1);
-        Node<K, V> newNode = new Node<>(key, value, headFreqNode);
-        map.put(key, newNode);
-        headFreqNode.addNode(newNode);
+        synchronized (map) {
+            evictLRU(1);
+            Node<K, V> newNode = new Node<>(key, value, headFreqNode);
+            newNode.lock();
+            try {
+                map.put(key, newNode);
+                headFreqNode.addNode(newNode);
+            } finally {
+                newNode.unlock();
+            }
+        }
     }
 
     public V remove(K key) {
         Objects.requireNonNull(key, "Key cannot be null");
-        
+
         Node<K, V> node = map.get(key);
         if (node == null) {
             return null;
         }
 
-        removeNodeFromFreqTree(node);
-        map.remove(key);
-        return node.getValue();
+        node.lock();
+        try {
+            removeNodeFromFreqTree(node);
+            map.remove(key);
+            return node.getValue();
+        } finally {
+            node.unlock();
+        }
+
     }
 
     public boolean containsKey(K key) {
@@ -78,7 +101,7 @@ public class LFUCache<K, V> {
         return capacity;
     }
 
-    public void clear() {
+    public synchronized void clear() {
         map.clear();
         headFreqNode.clear();
     }
@@ -87,29 +110,9 @@ public class LFUCache<K, V> {
         return map.isEmpty();
     }
 
-    private void increaseNodeTime(Node<K, V> node) {
-        FreqNode<K, V> currentFreqNode = node.getFreqNode();
-        FreqNode<K, V> nextFreqNode = getNextFreqNode(currentFreqNode);
-        removeNodeFromFreqTree(node);
-        node.setFreqNode(nextFreqNode);
-        nextFreqNode.addNode(node);
-    }
-
-    private FreqNode<K, V> getNextFreqNode(final FreqNode<K, V>preFreqNode) {
-        final FreqNode<K, V>nextFreqNode = preFreqNode.getNext();
-        if (preFreqNode.getNext() == null) {
-            int prevTime = preFreqNode.getTime();
-            FreqNode<K, V> newNode = new FreqNode<>(prevTime + 1, preFreqNode);
-            preFreqNode.setNext(newNode);
-            return newNode;
-        }
-        return nextFreqNode;
-    }
-
     private void removeNodeFromFreqTree(final Node<K, V> node) {
         final FreqNode<K, V> freqNode = node.getFreqNode();
-        freqNode.getNodes().remove(node);
-        freqNode.reduce();
+        freqNode.removeNode(node);
     }
 
     private void evictLRU(final int buffer) {
@@ -120,9 +123,13 @@ public class LFUCache<K, V> {
         }
         FreqNode<K, V> nextFreqNode = headFreqNode.getNext();
         assert nextFreqNode == null || nextFreqNode.getTime() > 1;
-        while (map.size() > capacity - buffer && nextFreqNode != null && !nextFreqNode.isEmpty()) {
-            K shouldRemove = nextFreqNode.getFirstKey();
-            remove(shouldRemove);
+        while (map.size() > capacity - buffer && nextFreqNode != null) {
+            if (!nextFreqNode.isEmpty()) {
+                K shouldRemove = nextFreqNode.getFirstKey();
+                remove(shouldRemove);
+                return;
+            }
+            nextFreqNode = nextFreqNode.getNext();
         }
     }
 }

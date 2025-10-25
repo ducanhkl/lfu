@@ -1,6 +1,9 @@
 package org.ducanh;
 
+import java.util.concurrent.locks.ReentrantLock;
+
 public class Node<K, V> {
+    private final ReentrantLock reentrantLock;
     private final K key;
     private V value;
     private FreqNode<K, V> freqNode;
@@ -9,7 +12,17 @@ public class Node<K, V> {
         this.key = key;
         this.value = value;
         this.freqNode = freqNode;
+        this.reentrantLock = new ReentrantLock();
     }
+
+    public void lock() {
+        reentrantLock.lock();
+    }
+
+    public void unlock() {
+        reentrantLock.unlock();
+    }
+
 
     public K getKey() {
         return key;
