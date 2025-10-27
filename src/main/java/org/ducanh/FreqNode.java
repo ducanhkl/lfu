@@ -34,20 +34,43 @@ public class FreqNode <K, V> {
         }
     }
 
-    public static <K, V> void increaseFreqNode(Node<K, V> value) {
-        FreqNode<K, V> currentNode = value.getFreqNode();
+    public static <K, V> void increaseFreq(Node<K, V> kVNode) {
+        kVNode.lock();
+        FreqNode<K, V> currentNode = kVNode.getFreqNode();
         currentNode.lock.writeLock().lock();
         try {
             FreqNode<K, V> freqNode = currentNode.getNextFreqNode();
             try {
                 freqNode.lock.writeLock().lock();
-                currentNode.nodes.remove(value);
-                value.setFreqNode(freqNode);
-                freqNode.nodes.add(value);
+                currentNode.nodes.remove(kVNode);
+                kVNode.setFreqNode(freqNode);
+                freqNode.nodes.add(kVNode);
             } finally {
                 freqNode.lock.writeLock().unlock();
             }
         } finally {
+            kVNode.unlock();
+            currentNode.lock.writeLock().unlock();
+        }
+    }
+
+    public static <K, V> void setNewValueAndIncreaseFreqNode(Node<K, V> kVNode, V newValue) {
+        kVNode.lock();
+        FreqNode<K, V> currentNode = kVNode.getFreqNode();
+        currentNode.lock.writeLock().lock();
+        try {
+            FreqNode<K, V> freqNode = currentNode.getNextFreqNode();
+            try {
+                freqNode.lock.writeLock().lock();
+                currentNode.nodes.remove(kVNode);
+                kVNode.setFreqNode(freqNode);
+                kVNode.setValue(newValue);
+                freqNode.nodes.add(kVNode);
+            } finally {
+                freqNode.lock.writeLock().unlock();
+            }
+        } finally {
+            kVNode.unlock();
             currentNode.lock.writeLock().unlock();
         }
     }
@@ -96,16 +119,20 @@ public class FreqNode <K, V> {
         return prev;
     }
 
-    public void addNode(Node<K, V> node) {
+    public void addNode(Node<K, V> node, Runnable safeExecute) {
+        node.lock();
         lock.writeLock().lock();
         try {
             nodes.add(node);
+            safeExecute.run();
         } finally {
             lock.writeLock().unlock();
+            node.unlock();
         }
     }
 
     public void removeNode(Node<?, ?> node) {
+        node.lock();
         lock.writeLock().lock();
         try {
             nodes.remove(node);

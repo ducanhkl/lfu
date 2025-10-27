@@ -1,12 +1,18 @@
 package org.ducanh;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 
 public class LFUCache<K, V> {
     private final int capacity;
     private final Map<K, Node<K, V>> map;
     private final FreqNode<K, V> headFreqNode;
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Condition notFullCondition = lock.writeLock().newCondition();
 
     public LFUCache(Function<Integer, Map<K, Node<K, V>>> mapFactory) {
         if (mapFactory == null) {
@@ -28,45 +34,43 @@ public class LFUCache<K, V> {
 
     public V get(final K key) {
         Objects.requireNonNull(key, "Key cannot be null");
-        Node<K, V> node = map.get(key);
-        if (node == null) {
-            return null;
-        }
+        lock.readLock().lock();
         try {
-            node.lock();
-            FreqNode.increaseFreqNode(node);
+            Node<K, V> node = map.get(key);
+            if (node == null) {
+                return null;
+            }
+            FreqNode.increaseFreq(node);
             return node.getValue();
         } finally {
-            node.unlock();
+            lock.readLock().unlock();
         }
     }
 
     public void put(K key, V value) {
         Objects.requireNonNull(key, "Key cannot be null");
+        lock.readLock().lock();
+        try {
+            Node<K, V> node = map.get(key);
 
-        Node<K, V> node = map.get(key);
-
-        if (node != null) {
-            node.lock();
-            try {
-                node.setValue(value);
-                FreqNode.increaseFreqNode(node);
-            } finally {
-                node.unlock();
+            if (node != null) {
+                FreqNode.setNewValueAndIncreaseFreqNode(node, value);
+                return;
             }
-            return;
-        }
 
-        synchronized (map) {
-            evictLRU(1);
-            Node<K, V> newNode = new Node<>(key, value, headFreqNode);
-            newNode.lock();
             try {
-                map.put(key, newNode);
-                headFreqNode.addNode(newNode);
+                lock.writeLock().lock();
+                while (map.size() == capacity) {
+                    // Push event to trigger eviction
+                    notFullCondition.awaitUninterruptibly();
+                }
+                Node<K, V> newNode = new Node<>(key, value, headFreqNode);
+                headFreqNode.addNode(newNode, () -> map.put(key, newNode));
             } finally {
-                newNode.unlock();
+                lock.writeLock().unlock();
             }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
