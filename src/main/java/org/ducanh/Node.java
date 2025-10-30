@@ -7,6 +7,8 @@ public class Node<K, V> {
     private final K key;
     private V value;
     private FreqNode<K, V> freqNode;
+    // 0 is LIVE, 1 is DELETED
+    public volatile int state = 0;
 
     public Node(K key, V value, FreqNode<K, V> freqNode) {
         this.key = key;
@@ -15,14 +17,14 @@ public class Node<K, V> {
         this.reentrantLock = new ReentrantLock();
     }
 
-    public void lock() {
+    public void executeInLock(Runnable runnable) {
         reentrantLock.lock();
+        try {
+            runnable.run();
+        } finally {
+            reentrantLock.unlock();
+        }
     }
-
-    public void unlock() {
-        reentrantLock.unlock();
-    }
-
 
     public K getKey() {
         return key;

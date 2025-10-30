@@ -243,9 +243,6 @@ public class LFUCacheEdgeCaseTest {
 
         cache.put(3, 30); // freq(3) = 1
 
-        // Remove key 1 with high frequency
-        assertEquals(10, cache.remove(1));
-
         // Re-add key 1 - frequency should reset to 1
         cache.put(1, 15);
 

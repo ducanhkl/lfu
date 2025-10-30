@@ -2,6 +2,9 @@ package org.ducanh;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -10,11 +13,23 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * doubly linked list pointers to adjacent FreqNodes.
  */
 public class FreqNode <K, V> {
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private final ReentrantLock lock = new ReentrantLock();
     private final int time;
     private final Set<Node<K, V>> nodes;
-    private FreqNode<K, V> next;
-    private FreqNode<K, V> prev;
+    private volatile FreqNode<K, V> next;
+    private volatile FreqNode<K, V> prev;
+    // 0 is LIVE, 1 is DELETED
+    public volatile int state = 0;
+
+
+    public void executeInLock(Runnable runnable) {
+        lock.lock();
+        try {
+            runnable.run();
+        } finally {
+            lock.unlock();
+        }
+    }
 
     public FreqNode(int time, FreqNode<K, V> prev) {
         this.time = time;
@@ -24,83 +39,32 @@ public class FreqNode <K, V> {
     }
 
     public void clear() {
-        lock.writeLock().lock();
+        lock.lock();
         try {
             next = null;
             prev = null;
             nodes.clear();
         } finally {
-            lock.writeLock().unlock();
+            lock.unlock();
         }
     }
 
-    public static <K, V> void increaseFreq(Node<K, V> kVNode) {
-        kVNode.lock();
-        FreqNode<K, V> currentNode = kVNode.getFreqNode();
-        currentNode.lock.writeLock().lock();
-        try {
-            FreqNode<K, V> freqNode = currentNode.getNextFreqNode();
-            try {
-                freqNode.lock.writeLock().lock();
-                currentNode.nodes.remove(kVNode);
-                kVNode.setFreqNode(freqNode);
-                freqNode.nodes.add(kVNode);
-            } finally {
-                freqNode.lock.writeLock().unlock();
-            }
-        } finally {
-            kVNode.unlock();
-            currentNode.lock.writeLock().unlock();
-        }
-    }
-
-    public static <K, V> void setNewValueAndIncreaseFreqNode(Node<K, V> kVNode, V newValue) {
-        kVNode.lock();
-        FreqNode<K, V> currentNode = kVNode.getFreqNode();
-        currentNode.lock.writeLock().lock();
-        try {
-            FreqNode<K, V> freqNode = currentNode.getNextFreqNode();
-            try {
-                freqNode.lock.writeLock().lock();
-                currentNode.nodes.remove(kVNode);
-                kVNode.setFreqNode(freqNode);
-                kVNode.setValue(newValue);
-                freqNode.nodes.add(kVNode);
-            } finally {
-                freqNode.lock.writeLock().unlock();
-            }
-        } finally {
-            kVNode.unlock();
-            currentNode.lock.writeLock().unlock();
-        }
-    }
-
-    private FreqNode<K, V> getNextFreqNode() {
+    public FreqNode<K, V> getNextFreqNode() {
         if (next == null) {
             int prevTime = this.getTime();
             FreqNode<K, V> newNode = new FreqNode<>(prevTime + 1, this);
-            this.setNext(newNode);
+            next = newNode;
             return newNode;
         }
         return next;
     }
 
     public K getFirstKey() {
-        lock.readLock().lock();
-        try {
-            return nodes.iterator().next().getKey();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return nodes.iterator().next().getKey();
     }
 
     public boolean isEmpty() {
-        lock.readLock().lock();
-        try {
-            return nodes.isEmpty();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return nodes.isEmpty();
     }
 
     public int getTime() {
@@ -115,50 +79,16 @@ public class FreqNode <K, V> {
         return next;
     }
 
-    public FreqNode<K, V> getPrev() {
-        return prev;
-    }
-
-    public void addNode(Node<K, V> node, Runnable safeExecute) {
-        node.lock();
-        lock.writeLock().lock();
-        try {
-            nodes.add(node);
-            safeExecute.run();
-        } finally {
-            lock.writeLock().unlock();
-            node.unlock();
-        }
+    public void addNode(Node<K, V> node) {
+        nodes.add(node);
     }
 
     public void removeNode(Node<?, ?> node) {
-        node.lock();
-        lock.writeLock().lock();
-        try {
-            nodes.remove(node);
-            reduce();
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    private void reduce() {
-        if (!nodes.isEmpty() || time == 1) {
-            return;
-        }
-        if (next != null)
-            next.prev = prev;
-        if (prev != null)
-            prev.next = next;
+        nodes.remove(node);
     }
 
     public void setNext(FreqNode<K, V> next) {
-        lock.writeLock().lock();
-        try {
-            this.next = next;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        this.next = next;
     }
 }
 
