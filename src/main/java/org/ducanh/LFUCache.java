@@ -2,10 +2,13 @@ package org.ducanh;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 
@@ -13,8 +16,9 @@ public class LFUCache<K, V> {
     private final int capacity;
     private final ConcurrentHashMap<K, Node<K, V>> map;
     private final FreqNode<K, V> headFreqNode;
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Condition notFullCondition = lock.writeLock().newCondition();
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notFullCondition = lock.newCondition();
+    private final ExecutorService evictionExecutor = Executors.newSingleThreadExecutor();
 
     public LFUCache(int capacity) {
         ConcurrentHashMap<K, Node<K, V>> map = new ConcurrentHashMap<>(capacity);
@@ -90,10 +94,10 @@ public class LFUCache<K, V> {
                 }
                 return;
             }
-            lock.writeLock().lock();
+            lock.lock();
             try {
-                while (map.size() == capacity) {
-                    // Push event to trigger eviction
+                while (map.size() >= capacity) {
+                    evictionExecutor.submit(this::evictLRU);
                     notFullCondition.awaitUninterruptibly();
                 }
                 Node<K, V> refeshedNode = map.get(key);
@@ -106,55 +110,34 @@ public class LFUCache<K, V> {
                     return;
                 }
             } finally {
-                lock.writeLock().unlock();
+                lock.unlock();
             }
         }
     }
 
     public void remove(K key) {
         Objects.requireNonNull(key, "Key cannot be null");
-        Node<K, V> node = map.get(key);
-        if (node == null || node.state == 1) {
-            return;
-        }
-        node.executeInLock(() -> {
-            if (node.state == 1) {
+        lock.lock();
+        try {
+            Node<K, V> node = map.get(key);
+            if (node == null || node.state == 1) {
                 return;
             }
-            FreqNode<K, V> currentNode = node.getFreqNode();
-            currentNode.executeInLock(() -> {
-                currentNode.removeNode(node);
-                map.remove(key);
-                node.state = 1;
+            node.executeInLock(() -> {
+                if (node.state == 1) {
+                    return;
+                }
+                FreqNode<K, V> currentNode = node.getFreqNode();
+                currentNode.executeInLock(() -> {
+                    currentNode.removeNode(node);
+                    map.remove(key);
+                    node.state = 1;
+                });
             });
-        });
-        notFullCondition.signal();
-    }
-
-    public boolean containsKey(K key) {
-        return map.containsKey(key);
-    }
-
-    public int size() {
-        return map.size();
-    }
-
-    public int capacity() {
-        return capacity;
-    }
-
-    public void clear() {
-        lock.writeLock().lock();
-        try {
-            map.clear();
-            headFreqNode.clear();
+            notFullCondition.signal();
         } finally {
-            lock.writeLock().unlock();
+            lock.unlock();
         }
-    }
-
-    public boolean isEmpty() {
-        return map.isEmpty();
     }
 
     public void evictLRU() {
@@ -170,9 +153,74 @@ public class LFUCache<K, V> {
     }
 
     public void cleanEmptyFreqNode() {
-        for (FreqNode<K, V> freqNode = headFreqNode; freqNode != null;) {
-            
+        FreqNode<K, V> current = headFreqNode.getNext();
+        FreqNode<K, V> lastNode = headFreqNode;
+
+        while (current != null) {
+            FreqNode<K, V> prev = current.getPrev();
+            FreqNode<K, V> next = current.getNext();
+            lastNode = current;
+
+            if (prev != null && next != null) {
+                cleanMiddleNode(prev, current, next);
+            }
+            current = next;
+        }
+
+        cleanLastNode(lastNode);
+    }
+
+    public boolean containsKey(K key) {
+        return map.containsKey(key);
+    }
+
+    public int size() {
+        return map.size();
+    }
+
+    public int capacity() {
+        return capacity;
+    }
+
+    public void clear() {
+        lock.lock();
+        try {
+            map.clear();
+            headFreqNode.clear();
+        } finally {
+            lock.unlock();
         }
     }
 
+    public void shutdown() {
+        evictionExecutor.shutdownNow();
+    }
+
+    public boolean isEmpty() {
+        return map.isEmpty();
+    }
+
+
+
+    private void cleanMiddleNode(FreqNode<K, V> prev, FreqNode<K, V> current, FreqNode<K, V> next) {
+        prev.executeInLock(() -> current.executeInLock(() -> next.executeInLock(() -> {
+            if (current.isEmpty() && current.state == 0) {
+                current.state = 1;
+                prev.setNext(next);
+                next.setPrev(prev);
+            }
+        })));
+    }
+
+    private void cleanLastNode(FreqNode<K, V> lastNode) {
+        if (lastNode != headFreqNode && lastNode.getPrev() != null) {
+            FreqNode<K, V> prev = lastNode.getPrev();
+            prev.executeInLock(() -> lastNode.executeInLock(() -> {
+                if (lastNode.isEmpty() && lastNode.state == 0) {
+                    lastNode.state = 1;
+                    prev.setNext(null);
+                }
+            }));
+        }
+    }
 }

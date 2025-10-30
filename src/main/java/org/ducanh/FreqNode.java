@@ -90,5 +90,13 @@ public class FreqNode <K, V> {
     public void setNext(FreqNode<K, V> next) {
         this.next = next;
     }
+
+    public FreqNode<K, V> getPrev() {
+        return prev;
+    }
+
+    public void setPrev(FreqNode<K, V> prev) {
+        this.prev = prev;
+    }
 }
 
